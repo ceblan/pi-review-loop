@@ -1,11 +1,19 @@
 import { relative, sep } from "node:path";
-import { watch, type FSWatcher } from "chokidar";
+// glimpseui and chokidar are imported dynamically inside the methods that use
+// them (openOrShow / startWatcher), NOT at the top level. A top-level import
+// would throw at module-load time when those runtime deps are missing, pi would
+// skip the whole extension, `registerCommand` would never run, and `/diff-review`
+// would silently fall through to another extension's same-named command (e.g.
+// visual-explainer's prompt template). With dynamic imports the module always
+// loads, the command is always claimed, and a missing dep surfaces as a clear
+// error at invocation time. See lat.md/command-collision.md.
+import type { FSWatcher } from "chokidar";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { open, type GlimpseWindow } from "glimpseui";
+import type { GlimpseWindow } from "glimpseui";
 import { createCheckpoint, getRepoRoot } from "./git.js";
 import { composeFeedback } from "./prompt.js";
 import type { HostMessage, ReviewCheckpoint, WindowMessage } from "./types.js";
-import { loadReviewHtml } from "./ui.js";
+import { getReviewHtmlPath } from "./ui.js";
 import { WorkspaceModel } from "./workspace.js";
 
 export const CHECKPOINT_ENTRY = "review-loop/checkpoint";
@@ -65,8 +73,16 @@ export class ReviewController {
     await this.model.refresh();
     await this.startWatcher();
 
-    const window = open(loadReviewHtml(), { width: 1480, height: 920, title: "Review Loop" });
+    const { open } = await import("glimpseui");
+    // Open with empty initial HTML and load the bundle via file:// in the ready
+    // handler. Passing the 4.4 MB bundle as an HTML string would make Glimpse
+    // base64-encode it into a data:text/html URL (~6 MB) that Chrome cannot
+    // navigate to, leaving the window blank. file:// has no such limit.
+    const window = open("", { width: 1480, height: 920, title: "Review Loop" });
     this.window = window;
+    window.once("ready", () => {
+      try { window.loadFile(getReviewHtmlPath()); } catch {}
+    });
     window.on("message", (value) => {
       const message = parseMessage(value);
       if (message != null) void this.handleMessage(message, ctx);
@@ -91,6 +107,7 @@ export class ReviewController {
   }
 
   private async startWatcher(): Promise<void> {
+    const { watch } = await import("chokidar");
     this.watcher = watch(this.repoRoot, {
       ignoreInitial: true,
       ignored: (path) => {
@@ -128,6 +145,10 @@ export class ReviewController {
   }
 
   private async handleMessage(message: WindowMessage, ctx: ExtensionCommandContext): Promise<void> {
+    if (message.type === "close") {
+      try { this.window?.close(); } catch {}
+      return;
+    }
     if (this.model == null) return;
     if (message.type === "ready") {
       this.send({ type: "workspace", state: this.model.state() });

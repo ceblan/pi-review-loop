@@ -22,6 +22,8 @@
     "check": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "build": "npm run build:web && npm run check",
+    "patch:glimpse": "node scripts/patch-glimpseui.mjs",
+    "postinstall": "node scripts/patch-glimpseui.mjs || echo '[patch-glimpseui] skipped (best-effort)'",
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {

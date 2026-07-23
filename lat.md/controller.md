@@ -29,7 +29,7 @@ Idempotent open. If the window already exists, calls `window.show()` and notifie
 2. Creates a `WorkspaceModel` with the latest checkpoint found on the active session branch (`latestCheckpoint`).
 3. Calls `model.refresh()` to populate initial file pairs.
 4. Starts the chokidar watcher (`startWatcher`).
-5. Opens the Glimpse window with the bundled HTML (`loadReviewHtml()`), size 1480×920.
+5. Opens an empty Glimpse window (1480×920) and, on its `ready` event, calls `window.loadFile(getReviewHtmlPath())` to navigate the Chromium backend to `file://…/web/dist/index.html`.
 6. Wires `message`, `closed`, and `error` event handlers.
 
 ## File watcher
@@ -53,6 +53,7 @@ The `enqueue` method serializes all async operations through a promise chain, pr
 | `set-mode` | Calls `model.setMode()`, sends updated state |
 | `request-file` | Calls `model.getFile()`, sends `FileContents` or `file-error` |
 | `submit-review` | Runs the full checkpoint submission flow (see below) |
+| `close` | Calls `window.close()` (handled before the `model` null-guard); the backend emits `Closed` and exits, firing `disposeWindow` |
 
 The `submitting` flag prevents concurrent submissions.
 

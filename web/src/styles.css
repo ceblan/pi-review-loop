@@ -54,6 +54,18 @@ button { color: inherit; }
 .identity-copy strong { font-size: 12px; font-weight: 650; }
 .identity-copy span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar { gap: 8px; }
+.close-btn {
+  margin-left: auto;
+  width: 26px; height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 14px; line-height: 1;
+  cursor: pointer;
+}
+.close-btn:hover { color: var(--text); border-color: var(--text); }
 .segment { display: flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
 .segment button {
   border: 0;

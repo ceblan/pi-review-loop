@@ -43,6 +43,7 @@ const repoMetaEl = byId("repo-meta");
 const checkpointButton = byId<HTMLButtonElement>("mode-checkpoint");
 const headButton = byId<HTMLButtonElement>("mode-head");
 const submitButton = byId<HTMLButtonElement>("submit-review");
+const closeButton = byId<HTMLButtonElement>("close-window");
 const searchInput = byId<HTMLInputElement>("search");
 const recentCountEl = byId("recent-count");
 const fileCountEl = byId("file-count");
@@ -749,6 +750,7 @@ headButton.addEventListener("click", () => {
   saveMountedScroll();
   send({ type: "set-mode", mode: "head" as ReviewMode });
 });
+closeButton.addEventListener("click", () => send({ type: "close" }));
 searchInput.addEventListener("input", () => { renderRecent(); renderTree(); });
 fileCommentButton.addEventListener("click", openFileDraft);
 addCommentButton.addEventListener("click", addDraft);

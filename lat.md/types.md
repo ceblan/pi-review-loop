@@ -104,6 +104,7 @@ Messages sent from the Glimpse window to the Node.js host via `window.glimpse.se
 | `set-mode` | `mode: ReviewMode` | User switched diff mode |
 | `request-file` | `path, mode, requestId` | UI requests full file content |
 | `submit-review` | `comments: ReviewComment[]` | User submitted the review |
+| `close` | — | User clicked the in-window close button |
 
 ## HostMessage (host → UI)
 

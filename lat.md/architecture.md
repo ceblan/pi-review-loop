@@ -66,6 +66,6 @@ Custom entries do not participate in model context.
 
 External packages the extension relies on at runtime.
 
-- `glimpseui` — native window (WebView) with bidirectional JS messaging
+- `glimpseui` — native window (WebView) with bidirectional JS messaging. On Linux the native WebKitGTK backend is primary: it needs the `webkitgtk-6.0` system package and a built binary at `node_modules/glimpseui/src/glimpse` (produced by `npm run build:linux`, which requires `CARGO_NET_GIT_FETCH_WITH_CLI=true` for its git submodule fetch). Without that binary, Glimpse auto-falls back to a Chromium-CDP backend (`chromium-backend.mjs`) that spawns a system Chromium. The native backend normally opens as a gtk4-layer-shell `Overlay` surface, which Hyprland cannot tile and renders with no window chrome; `scripts/patch-glimpseui.mjs` (run via the `postinstall` hook) patches `main.rs` to open as a normal GTK toplevel so the compositor tiles it next to the focused window (the kitty running pi). The patch is idempotent and best-effort (logs and skips if the source context changed, leaving the Chromium fallback intact).
 - `chokidar` — filesystem watcher for the repo root
 - `monaco-editor` — diff editor in the bundled web UI (esbuild-bundled, self-contained HTML)

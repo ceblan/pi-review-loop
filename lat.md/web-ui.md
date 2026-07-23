@@ -12,6 +12,12 @@ The web frontend in `web/src/` is bundled by esbuild into a self-contained `web/
 
 The test suite validates that both bundles are syntactically valid JavaScript and that no unresolved `__PLACEHOLDER__` tokens remain.
 
+## Bundle loading
+
+The host loads the bundle via `file://`, never by passing the HTML string to `open()`.
+
+Passing the string would base64-encode it into a `data:text/html;base64` URL, and the 4.4 MB bundle (~6 MB as a data URL) is too large for Chrome to navigate to — the page never loads and the window stays blank white. Instead the controller opens an empty window and calls `window.loadFile(getReviewHtmlPath())` on `ready`, which sends the `file` message to the Glimpse backend, navigating it to `file://…/web/dist/index.html`. `file://` has no such size limit, and the bundle renders fully (verified: all sidebar/editor elements present in the DOM). The backend is the native WebKitGTK binary on Linux (see [[architecture#Architecture#Key dependencies]]); the Chromium-CDP path (`chromium-backend.mjs`) is only a zero-compile fallback used when the native binary is absent, and was the source of the EPIPE trace on close. The path is resolved from `import.meta.url` via `fileURLToPath`, so it works from the installed package too.
+
 ## Monaco diff editor
 
 A `monaco.editor.createDiffEditor` instance with:

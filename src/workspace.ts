@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { fileMtime, getBranchName, getHeadSha, repoName, scanAgainstCheckpoint, scanAgainstHead, type FilePair } from "./git.js";
+import { fileMtime, getBranchName, getHeadSha, getFileContents, repoName, scanAgainstCheckpoint, scanAgainstHead, type FilePair } from "./git.js";
 import type { ChangedFile, FileContents, ReviewCheckpoint, ReviewMode, WorkspaceState } from "./types.js";
 
 export class WorkspaceModel {
@@ -9,6 +9,7 @@ export class WorkspaceModel {
   private pairsByMode = new Map<ReviewMode, Map<string, FilePair>>();
   private mtimes = new Map<string, number>();
   private branch: string | null = null;
+  private truncated = false;
 
   private constructor(
     private readonly pi: ExtensionAPI,
@@ -47,16 +48,17 @@ export class WorkspaceModel {
   }
 
   async refresh(): Promise<WorkspaceState> {
-    const [checkpointPairs, headPairs, branch] = await Promise.all([
+    const [checkpointResult, headResult, branch] = await Promise.all([
       scanAgainstCheckpoint(this.pi, this.repoRoot, this.checkpointBaseline()),
       scanAgainstHead(this.pi, this.repoRoot),
       getBranchName(this.pi, this.repoRoot),
     ]);
     this.branch = branch;
-    this.pairsByMode.set("checkpoint", new Map(checkpointPairs.map((pair) => [pair.path, pair])));
-    this.pairsByMode.set("head", new Map(headPairs.map((pair) => [pair.path, pair])));
+    this.pairsByMode.set("checkpoint", new Map(checkpointResult.pairs.map((pair) => [pair.path, pair])));
+    this.pairsByMode.set("head", new Map(headResult.pairs.map((pair) => [pair.path, pair])));
+    this.truncated = checkpointResult.truncated || headResult.truncated;
 
-    const paths = new Set([...checkpointPairs, ...headPairs].map((pair) => pair.path));
+    const paths = new Set([...checkpointResult.pairs, ...headResult.pairs].map((pair) => pair.path));
     this.mtimes = new Map(await Promise.all([...paths].map(async (path) => [path, await fileMtime(this.repoRoot, path)] as const)));
     return this.state();
   }
@@ -84,19 +86,18 @@ export class WorkspaceModel {
       files,
       pendingFiles,
       recentPaths,
+      filesCapped: this.truncated || undefined,
     };
   }
 
-  getFile(path: string, mode: ReviewMode): FileContents {
+  async getFile(path: string, mode: ReviewMode): Promise<FileContents> {
     const pair = this.pairsByMode.get(mode)?.get(path);
     if (pair == null) throw new Error(`${path} is no longer changed in this mode.`);
-    return {
-      path,
-      mode,
-      fingerprint: pair.fingerprint,
-      originalContent: pair.originalContent,
-      modifiedContent: pair.modifiedContent,
-    };
+    const baseline = mode === "checkpoint"
+      ? this.checkpointBaseline()
+      : { headSha: await getHeadSha(this.pi, this.repoRoot), overrides: {} };
+    const contents = await getFileContents(this.pi, this.repoRoot, baseline, path, pair.fingerprint);
+    return mode === "checkpoint" ? contents : { ...contents, mode: "head" };
   }
 
   checkpointChangedPaths(): string[] {

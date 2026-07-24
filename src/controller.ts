@@ -1,22 +1,23 @@
-import { relative, sep } from "node:path";
-// glimpseui and chokidar are imported dynamically inside the methods that use
-// them (openOrShow / startWatcher), NOT at the top level. A top-level import
-// would throw at module-load time when those runtime deps are missing, pi would
-// skip the whole extension, `registerCommand` would never run, and `/diff-review`
-// would silently fall through to another extension's same-named command (e.g.
-// visual-explainer's prompt template). With dynamic imports the module always
-// loads, the command is always claimed, and a missing dep surfaces as a clear
-// error at invocation time. See lat.md/command-collision.md.
-import type { FSWatcher } from "chokidar";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { GlimpseWindow } from "glimpseui";
-import { createCheckpoint, getRepoRoot } from "./git.js";
+import { createCheckpoint, getRepoRoot, workspaceSignature } from "./git.js";
 import { composeFeedback } from "./prompt.js";
 import type { HostMessage, ReviewCheckpoint, WindowMessage } from "./types.js";
 import { getReviewHtmlPath } from "./ui.js";
 import { WorkspaceModel } from "./workspace.js";
 
 export const CHECKPOINT_ENTRY = "review-loop/checkpoint";
+
+/** Poll interval for the working-tree signature check. Git honors the full
+ * exclude chain (.gitignore, .git/info/exclude, core.excludesFile) so heavy
+ * directories never appear in the signature and the poll stays cheap even in
+ * 225k-file repos. Replaces the recursive chokidar watcher that traversed the
+ * entire tree and exhausted inotify on large worktrees. */
+const POLL_INTERVAL_MS = 2000;
+
+/** Maximum serialized message size pushed to the WebKit window. Beyond this the
+ * send is dropped to avoid crashing the web process with a giant JS eval. */
+const MAX_SEND_BYTES = 4 * 1024 * 1024;
 
 function isCheckpoint(value: unknown): value is ReviewCheckpoint {
   if (value == null || typeof value !== "object") return false;
@@ -45,10 +46,10 @@ function parseMessage(value: unknown): WindowMessage | null {
 
 export class ReviewController {
   private window: GlimpseWindow | null = null;
-  private watcher: FSWatcher | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private lastSignature = "";
   private model: WorkspaceModel | null = null;
   private repoRoot = "";
-  private refreshTimer: NodeJS.Timeout | null = null;
   private operation = Promise.resolve();
   private submitting = false;
 
@@ -70,8 +71,9 @@ export class ReviewController {
 
     this.repoRoot = await getRepoRoot(this.pi, ctx.cwd);
     this.model = await WorkspaceModel.create(this.pi, this.repoRoot, latestCheckpoint(ctx, this.repoRoot));
-    await this.model.refresh();
-    await this.startWatcher();
+    const state = await this.model.refresh();
+    this.lastSignature = await workspaceSignature(this.pi, this.repoRoot);
+    this.startPolling();
 
     const { open } = await import("glimpseui");
     // Open with empty initial HTML and load the bundle via file:// in the ready
@@ -93,51 +95,36 @@ export class ReviewController {
       this.disposeWindow(window);
     });
 
+    // Push the initial state once the window is wired so it does not have to
+    // wait for the first poll tick.
+    this.send({ type: "workspace", state });
     ctx.ui.notify("Opened Review Loop.", "info");
   }
 
   async close(): Promise<void> {
-    if (this.refreshTimer != null) clearTimeout(this.refreshTimer);
-    this.refreshTimer = null;
-    await this.watcher?.close();
-    this.watcher = null;
+    this.stopPolling();
     const window = this.window;
     this.window = null;
     try { window?.close(); } catch {}
   }
 
-  private async startWatcher(): Promise<void> {
-    const { watch } = await import("chokidar");
-    this.watcher = watch(this.repoRoot, {
-      ignoreInitial: true,
-      ignored: (path) => {
-        const rel = relative(this.repoRoot, path);
-        return rel === ".git" || rel.startsWith(`.git${sep}`) || rel === "node_modules" || rel.startsWith(`node_modules${sep}`);
-      },
-    });
-    this.watcher.on("all", (_event, path) => {
-      const repoPath = this.toRepoPath(path);
-      if (repoPath == null) return;
-      this.scheduleRefresh();
-    });
-  }
-
-  private toRepoPath(absolutePath: string): string | null {
-    const path = relative(this.repoRoot, absolutePath);
-    if (!path || path === ".." || path.startsWith(`..${sep}`)) return null;
-    return path.split(sep).join("/");
-  }
-
-  private scheduleRefresh(): void {
-    if (this.refreshTimer != null) clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => {
-      this.refreshTimer = null;
+  private startPolling(): void {
+    this.stopPolling();
+    this.pollTimer = setInterval(() => {
       this.enqueue(async () => {
         if (this.model == null) return;
+        const signature = await workspaceSignature(this.pi, this.repoRoot);
+        if (signature === this.lastSignature) return;
+        this.lastSignature = signature;
         const state = await this.model.refresh();
         this.send({ type: "workspace", state });
       });
-    }, 100);
+    }, POLL_INTERVAL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer != null) clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
 
   private enqueue(task: () => Promise<void>): void {
@@ -163,7 +150,7 @@ export class ReviewController {
 
     if (message.type === "request-file") {
       try {
-        this.send({ type: "file", requestId: message.requestId, file: this.model.getFile(message.path, message.mode) });
+        this.send({ type: "file", requestId: message.requestId, file: await this.model.getFile(message.path, message.mode) });
       } catch (error) {
         this.send({ type: "file-error", requestId: message.requestId, message: error instanceof Error ? error.message : String(error) });
       }
@@ -194,16 +181,17 @@ export class ReviewController {
   private send(message: HostMessage): void {
     if (this.window == null) return;
     const payload = escapeInline(JSON.stringify(message));
+    if (payload.length > MAX_SEND_BYTES) {
+      // Drop oversized payloads rather than crashing the web process.
+      return;
+    }
     try { this.window.send(`window.__reviewReceive(${payload})`); } catch {}
   }
 
   private disposeWindow(window: GlimpseWindow): void {
     if (this.window !== window) return;
     this.window = null;
-    if (this.refreshTimer != null) clearTimeout(this.refreshTimer);
-    this.refreshTimer = null;
-    void this.watcher?.close();
-    this.watcher = null;
+    this.stopPolling();
     this.onClosed();
   }
 }

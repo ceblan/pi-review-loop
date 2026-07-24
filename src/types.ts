@@ -18,6 +18,10 @@ export interface WorkspaceState {
   files: ChangedFile[];
   pendingFiles: ChangedFile[];
   recentPaths: string[];
+  /** True when the scan exceeded MAX_CANDIDATES and only a prefix of changed
+   * files is reported. The UI surfaces a notice so the reviewer knows the list
+   * is incomplete rather than silently truncated. */
+  filesCapped?: boolean;
 }
 
 export interface FileContents {

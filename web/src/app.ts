@@ -106,14 +106,21 @@ monaco.editor.defineTheme("review-loop", {
     "editorLineNumber.activeForeground": "#9aa5b5",
     "editor.selectionBackground": "#33415c88",
     "editor.lineHighlightBackground": "#151a23",
-    "diffEditor.insertedTextBackground": "#2d6a4f38",
-    "diffEditor.removedTextBackground": "#8f3a4b38",
-    "diffEditor.insertedLineBackground": "#19382c55",
-    "diffEditor.removedLineBackground": "#41212a55",
+    "diffEditor.insertedTextBackground": "#2ea0435C",
+    "diffEditor.removedTextBackground": "#e5534b5C",
+    "diffEditor.insertedLineBackground": "#1a4a2e6E",
+    "diffEditor.removedLineBackground": "#4d1f286E",
+    "diffEditor.insertedTextBorder": "#3fb950",
+    "diffEditor.removedTextBorder": "#f85149",
     "diffEditor.diagonalFill": "#202734",
     "scrollbarSlider.background": "#30394988",
     "scrollbarSlider.hoverBackground": "#3d485bAA",
     "editorOverviewRuler.border": "#00000000",
+    "diffEditorOverview.insertedForeground": "#3fb950CC",
+    "diffEditorOverview.removedForeground": "#f85149CC",
+    "minimapGutter.addedBackground": "#3fb950",
+    "minimapGutter.deletedBackground": "#f85149",
+    "minimapGutter.modifiedBackground": "#d29922",
   },
 });
 monaco.editor.setTheme("review-loop");
@@ -718,6 +725,7 @@ window.__reviewReceive = (message: HostMessage): void => {
     const file = activeFile();
     if (previousPath !== activePath || previousMode !== workspace.mode || file?.fingerprint !== mountedFingerprint) mountedFingerprint = "";
     render();
+    if (workspace.filesCapped) showToast("Too many changed files; showing the first 2000");
     requestActiveFile();
     return;
   }

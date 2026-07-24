@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { composeFeedback } from "../src/prompt.js";
-import { createCheckpoint, decodeStored, parsePorcelainPaths, scanAgainstCheckpoint } from "../src/git.js";
+import { createCheckpoint, decodeStored, parseNameStatus, parsePorcelainPaths, scanAgainstCheckpoint } from "../src/git.js";
 import { WorkspaceModel } from "../src/workspace.js";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +34,11 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
 test("parses porcelain paths including renames", () => {
   const output = " M src/a.ts\0R  src/new.ts\0src/old.ts\0?? new file.ts\0";
   assert.deepEqual(parsePorcelainPaths(output), ["src/a.ts", "src/new.ts", "src/old.ts", "new file.ts"]);
+});
+
+test("parses name-status diff output including renames", () => {
+  const output = "M\0src/a.ts\0A\0untracked.ts\0R100\0src/new.ts\0src/old.ts\0";
+  assert.deepEqual(parseNameStatus(output).map((e) => `${e.status}:${e.path}`), ["M:src/a.ts", "A:untracked.ts", "R:src/new.ts", "R:src/old.ts"]);
 });
 
 test("formats compact actionable feedback", () => {
@@ -82,7 +87,7 @@ test("checkpoint stores dirty state and produces only the next delta", async () 
 
     assert.equal(decodeStored(checkpoint.overrides["app.ts"]!), "export const value = 2;\n");
     assert.equal(decodeStored(checkpoint.overrides["untracked.ts"]!), "first\n");
-    assert.deepEqual(await scanAgainstCheckpoint(fakePi(), cwd, checkpoint), []);
+    assert.deepEqual((await scanAgainstCheckpoint(fakePi(), cwd, checkpoint)).pairs, []);
 
     const reviewedModel = await WorkspaceModel.create(fakePi(), cwd, checkpoint);
     await reviewedModel.refresh();
@@ -95,12 +100,18 @@ test("checkpoint stores dirty state and produces only the next delta", async () 
     await writeFile(join(cwd, "app.ts"), "export const value = 3;\n");
     await writeFile(join(cwd, "clean.ts"), "export const clean = false;\n");
     await writeFile(join(cwd, "untracked.ts"), "second\n");
-    const delta = await scanAgainstCheckpoint(fakePi(), cwd, checkpoint);
+    const delta = (await scanAgainstCheckpoint(fakePi(), cwd, checkpoint)).pairs;
 
     assert.deepEqual(delta.map((file) => file.path), ["app.ts", "clean.ts", "untracked.ts"]);
-    assert.equal(delta.find((file) => file.path === "app.ts")?.originalContent, "export const value = 2;\n");
-    assert.equal(delta.find((file) => file.path === "clean.ts")?.originalContent, "export const clean = true;\n");
-    assert.equal(delta.find((file) => file.path === "untracked.ts")?.originalContent, "first\n");
+    // Contents are now loaded lazily via the model, not returned by the scan.
+    const model = await WorkspaceModel.create(fakePi(), cwd, checkpoint);
+    await model.refresh();
+    const appContents = await model.getFile("app.ts", "checkpoint");
+    const cleanContents = await model.getFile("clean.ts", "checkpoint");
+    const untrackedContents = await model.getFile("untracked.ts", "checkpoint");
+    assert.equal(appContents.originalContent, "export const value = 2;\n");
+    assert.equal(cleanContents.originalContent, "export const clean = true;\n");
+    assert.equal(untrackedContents.originalContent, "first\n");
     assert.equal(await readFile(join(cwd, "app.ts"), "utf8"), "export const value = 3;\n");
   } finally {
     await rm(cwd, { recursive: true, force: true });

@@ -29,7 +29,7 @@ A lightweight file descriptor sent to the UI in `WorkspaceState`. Does not inclu
 |-------|------|---------|
 | `path` | `string` | Repo-relative path |
 | `status` | `ChangeStatus` | Added/modified/deleted |
-| `fingerprint` | `string` | SHA-256 of current content (or `"deleted"`) |
+| `fingerprint` | `string` | Stat fingerprint `"size:mtimeMs"` (or `"deleted"`); same scheme as `FileContents.fingerprint` so the UI equality check works |
 | `recentAt?` | `number` | Filesystem mtime in ms; used for Recently Changed ordering |
 
 ## WorkspaceState
@@ -47,6 +47,7 @@ The full state snapshot sent to the window on every refresh and mode change.
 | `files` | `ChangedFile[]` | Files changed in the active mode |
 | `pendingFiles` | `ChangedFile[]` | Files changed in checkpoint mode (always, regardless of active mode) |
 | `recentPaths` | `string[]` | Active mode paths sorted by mtime descending |
+| `filesCapped?` | `boolean` | `true` when a scan exceeded `MAX_CANDIDATES`; UI shows a truncation notice |
 
 ## FileContents
 
@@ -56,7 +57,7 @@ Full file content pair returned when the UI requests a specific file.
 |-------|------|---------|
 | `path` | `string` | Repo-relative path |
 | `mode` | `ReviewMode` | Mode this content was resolved for |
-| `fingerprint` | `string` | SHA-256 of modified content |
+| `fingerprint` | `string` | Stat fingerprint from the `FilePair` (same scheme as `ChangedFile.fingerprint`) |
 | `originalContent` | `string` | Left-pane content (checkpoint baseline or HEAD) |
 | `modifiedContent` | `string` | Right-pane content (current on-disk) |
 

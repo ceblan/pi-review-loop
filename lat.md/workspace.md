@@ -30,11 +30,11 @@ Returns the effective baseline for checkpoint mode:
 
 Runs three operations in parallel:
 
-1. `scanAgainstCheckpoint(pi, repoRoot, checkpointBaseline())` — checkpoint-mode pairs.
-2. `scanAgainstHead(pi, repoRoot)` — HEAD-mode pairs.
+1. `scanAgainstCheckpoint(pi, repoRoot, checkpointBaseline())` — checkpoint-mode `{ pairs, truncated }` (see [[git#scanAgainstCheckpoint(pi, repoRoot, checkpoint)]]).
+2. `scanAgainstHead(pi, repoRoot)` — HEAD-mode `{ pairs, truncated }`.
 3. `getBranchName(pi, repoRoot)` — current branch name.
 
-Then collects mtimes for all paths across both modes via `fileMtime`. Returns `state()`.
+Scans return only paths/statuses/stat fingerprints — **no content** (see [[git#scanAgainstCheckpoint(pi, repoRoot, checkpoint)]]), so both modes can be scanned every refresh without OOM risk. Stores `truncated` if either scan hit `MAX_CANDIDATES`. Then collects mtimes for all paths across both modes via `fileMtime`. Returns `state()`.
 
 ## state(): WorkspaceState
 
@@ -51,12 +51,13 @@ Builds the serializable state object sent to the window:
 | `files` | Active mode's pairs as `ChangedFile[]` |
 | `pendingFiles` | Always checkpoint-mode pairs (used for submit button count and reviewed/pending indicators) |
 | `recentPaths` | Active mode's paths sorted by mtime descending, then alphabetically |
+| `filesCapped?` | `true` when either scan exceeded `MAX_CANDIDATES`; the UI surfaces a truncation notice |
 
-## getFile(path, mode): FileContents
+## getFile(path, mode): Promise<FileContents>
 
-Looks up the `FilePair` for `path` in the given mode's cache and returns its content pair.
+**Async.** Looks up the `FilePair` for `path` in the given mode's cache (for the stat fingerprint) and reads the actual contents on demand via `getFileContents`.
 
-Throws if the file is no longer changed in that mode (e.g., reverted between the state push and the request).
+For `head` mode the baseline is the current HEAD (`getHeadSha`), not `initialHead`, so newly landed commits are reflected. Contents are capped: oversized or binary sides become placeholder text (see [[git#getFileContents(pi, repoRoot, checkpoint, path, fingerprintValue)]]). Throws if the file is no longer changed in that mode (e.g., reverted between the state push and the request).
 
 ## setCheckpoint(checkpoint)
 

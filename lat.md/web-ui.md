@@ -24,6 +24,7 @@ A `monaco.editor.createDiffEditor` instance with:
 
 - Read-only, side-by-side mode.
 - Custom `review-loop` theme (dark, Tokyo Night-inspired palette).
+- Diff highlighting uses high-contrast bright green/red: inserted `#3fb950` / removed `#f85149` (borders, overview ruler, and minimap gutter), with semi-opaque text/line backgrounds so added/removed chunks and scrollbar-side change indicators stand out against the `#0d1016` background.
 - Minimap with proportional slider, overview ruler with 3 lanes.
 - Glyph margin enabled for inline comment indicators.
 - Language detection via file extension (`inferLanguage`): TypeScript, JavaScript, JSON, CSS, HTML, Markdown, Python, Rust, Go, Java, Kotlin, Shell, YAML.
@@ -96,7 +97,7 @@ Restored after mounting a file via `requestAnimationFrame` + 30ms `setTimeout` (
 
 ## Fingerprint-based remounting
 
-Each `FileContents` carries a SHA-256 `fingerprint`. The UI skips re-requesting a file when the fingerprint is unchanged.
+Each `FileContents` carries a stat fingerprint (`"size:mtimeMs"` or `"deleted"`) — the same scheme as `ChangedFile.fingerprint`. The UI skips re-requesting a file when the fingerprint is unchanged, comparing the two values for equality.
 
 When a workspace update arrives with a different fingerprint for the active file, `mountedFingerprint` is reset to force a fresh `request-file`.
 

@@ -8,7 +8,7 @@ The extension was **installed but failed to load**, so its `/diff-review` comman
 
 The trigger is a missing-dependency load failure, not a missing install:
 
-- `src/index.ts:2` imports `./controller.js`, and `src/controller.ts:2`/`:4` import `chokidar` and `glimpseui` at the top level.
+- `src/index.ts:2` imports `./controller.js`, and `src/controller.ts` imported `chokidar` and `glimpseui` at the top level (at the time of the incident).
 - When those packages are not installed (no `node_modules` — `npm install` never run in the repo), the module import throws `ERR_MODULE_NOT_FOUND`.
 - pi's loader catches the throw (`~/git-hub/pi-mono` `loader.ts:476-479`) and returns `{ extension: null, error: "Failed to load extension: …" }`, so the `reviewLoop` factory never runs and `registerCommand("diff-review")` never executes.
 - The failure is surfaced only as a quiet diagnostic (`interactive-mode.ts:1574-1577`), easy to miss — the user sees no blocking error.
@@ -37,12 +37,12 @@ The primary fix is a code-level change in this repo that prevents the whole sile
 
 ### 1. Lazy runtime imports (implemented)
 
-`glimpseui` and `chokidar` are imported **dynamically inside the methods that use them** (`openOrShow` / `startWatcher`), never at the top level of `src/controller.ts`. Only `import type` remains at the top (erased at compile).
+`glimpseui` is imported **dynamically inside `openOrShow`**, never at the top level of `src/controller.ts` (only `import type` sits at the top, erased at compile).
 
 - The module graph then has **zero third-party runtime top-level dependencies**, so `src/index.ts` always loads and `reviewLoop` always runs `registerCommand("diff-review")`.
 - Once the command is registered, pi claims `/diff-review`. `_tryExecuteExtensionCommand` returns `true` even when the handler throws (`agent-session.ts`), so pi **never** falls through to visual-explainer's template.
 - A missing dep now surfaces at **invocation** time: the handler's `try/catch` in `src/index.ts` calls `ctx.ui.notify("Could not open Review Loop: …", "error")` with the real cause.
-- Verified with pi's own loader (jiti): with `glimpseui`+`chokidar` absent, the module loads and registers `["diff-review"]`.
+- Verified with pi's own loader (jiti): with `glimpseui` absent, the module loads and registers `["diff-review"]`.
 
 ### 2. Install dependencies (operational, immediate)
 

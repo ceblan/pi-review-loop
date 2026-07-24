@@ -8,7 +8,7 @@ Creates a minimal `ExtensionAPI` stub that delegates `exec` to `execFileAsync`. 
 
 ## Porcelain parsing
 
-Tests for `parsePorcelainPaths` covering standard, rename, and untracked entries.
+Tests for `parsePorcelainPaths` and `parseNameStatus` covering standard, rename, and untracked entries.
 
 ### parses porcelain paths including renames
 
@@ -18,6 +18,13 @@ Verifies `parsePorcelainPaths` handles:
 - Rename entries (`R  src/new.ts` followed by `src/old.ts` as the next NUL field) — both old and new paths are included.
 - Untracked entries (`?? new file.ts`) — paths with spaces are preserved.
 - Deduplication via `Set`.
+
+### parses name-status diff output including renames
+
+Verifies `parseNameStatus` decodes `git diff --name-status -z` output, where status letter and path are separate NUL-delimited fields (no tab):
+
+- Standard modified (`M`) and added (`A`) entries consume two fields each.
+- Rename (`R100`) entries consume three fields: letter, new path, old path — both are emitted.
 
 ## Feedback composition
 
@@ -57,10 +64,10 @@ End-to-end integration test against a real temporary Git repo:
 2. **Dirty state**: Modifies `app.ts`, creates untracked `untracked.ts`.
 3. **Checkpoint**: Calls `createCheckpoint` with both paths.
 4. **Override verification**: Asserts `decodeStored` returns the exact dirty content for both files.
-5. **Zero delta**: `scanAgainstCheckpoint` immediately after checkpoint returns `[]` (nothing changed since the snapshot).
+5. **Zero delta**: `scanAgainstCheckpoint` immediately after checkpoint returns `{ pairs: [], truncated: false }` (nothing changed since the snapshot).
 6. **HEAD mode**: Creates a `WorkspaceModel` with the checkpoint, refreshes, switches to `"head"` mode. Asserts `pendingFiles` is empty (checkpoint mode has no changes), `recentPaths` contains both files, and all files have numeric `recentAt`.
 7. **New changes**: Modifies `app.ts` again, modifies `clean.ts`, modifies `untracked.ts`.
-8. **Delta scan**: `scanAgainstCheckpoint` returns exactly `["app.ts", "clean.ts", "untracked.ts"]`.
-9. **Original content**: Asserts the `originalContent` for each file matches the checkpoint snapshot (not HEAD), proving the override mechanism works correctly even for files that were clean at checkpoint time (`clean.ts` falls back to HEAD via `readRevision`).
+8. **Delta scan**: `scanAgainstCheckpoint` returns exactly `["app.ts", "clean.ts", "untracked.ts"]` in `.pairs`.
+9. **Lazy content**: Contents are no longer returned by the scan; the test calls `WorkspaceModel.getFile()` (async) for each path and asserts the `originalContent` matches the checkpoint snapshot (not HEAD), proving the override mechanism works correctly even for files that were clean at checkpoint time (`clean.ts` falls back to HEAD via `readRevisionCapped`).
 10. **Disk integrity**: Asserts the on-disk file still contains the latest content (scanning is non-destructive).
 11. **Cleanup**: Removes the temp directory.

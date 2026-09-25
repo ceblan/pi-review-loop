@@ -8,7 +8,7 @@ It is created lazily by the [[extension]] entry point and destroyed on window cl
 
 `glimpseui` is imported with `await import(...)` inside `openOrShow`, not at the top of the module (only `import type` sits at the top).
 
-This keeps the module loadable when the runtime dep is missing, so `registerCommand("diff-review")` always runs and `/diff-review` never silently falls through to another extension's same-named command. A missing dep surfaces as a clear error at invocation instead. See [[command-collision]].
+This keeps the module loadable when the runtime dep is missing, so `registerCommand("diffweb")` always runs and `/diffweb` never silently falls through to another extension's same-named command. A missing dep surfaces as a clear error at invocation instead. See [[command-collision]].
 
 The previous `chokidar` dynamic import was removed when the recursive watcher was replaced by polling (see [[controller#Working-tree polling]]).
 

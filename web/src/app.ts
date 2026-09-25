@@ -145,8 +145,8 @@ const diffEditor = monaco.editor.createDiffEditor(editorEl, {
   hideUnchangedRegions: { enabled: false },
   padding: { top: 8, bottom: 8 },
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-  fontSize: 12,
-  lineHeight: 19,
+  fontSize: 17,
+  lineHeight: 24,
 });
 
 let originalModel: monaco.editor.ITextModel | null = null;
@@ -784,11 +784,55 @@ submitButton.addEventListener("click", () => {
   send({ type: "submit-review", comments });
   window.setTimeout(() => updateSubmitButton(), 5000);
 });
+let fontDelta = 0;
+function applyFontDelta(): void {
+  document.documentElement.style.zoom = String((18 + fontDelta) / 18);
+}
+try {
+  const stored = Number(localStorage.getItem("review-loop:fontDelta"));
+  if (Number.isFinite(stored)) fontDelta = stored;
+} catch { /* localStorage unavailable */ }
+applyFontDelta();
+
 window.addEventListener("keydown", (event) => {
+  // j / k scroll the diff editor one line, unless focus is in a real (non-Monaco) text field.
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && (event.key === "j" || event.key === "k")) {
+    const ae = document.activeElement;
+    const isInput = ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement;
+    const isMonacoInput = isInput && ae.classList.contains("inputarea");
+    if (isInput && !isMonacoInput) return; // let j / k type into search / draft / inline-comment fields
+    const ed = diffEditor.getModifiedEditor();
+    const step = ed.getOption(monaco.editor.EditorOption.lineHeight) as number;
+    ed.setScrollTop(ed.getScrollTop() + (event.key === "j" ? step : -step));
+    event.preventDefault();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     searchInput.focus();
     searchInput.select();
+    return;
+  }
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key;
+  if (key === "+" || key === "=" || key === "Add") {
+    fontDelta = Math.min(fontDelta + 2, 32);
+    applyFontDelta();
+    try { localStorage.setItem("review-loop:fontDelta", String(fontDelta)); } catch { /* localStorage unavailable */ }
+    showToast(`Font ${18 + fontDelta}px`);
+    event.preventDefault();
+  } else if (key === "-" || key === "_" || key === "Subtract") {
+    fontDelta = Math.max(fontDelta - 2, -12);
+    applyFontDelta();
+    try { localStorage.setItem("review-loop:fontDelta", String(fontDelta)); } catch { /* localStorage unavailable */ }
+    showToast(`Font ${18 + fontDelta}px`);
+    event.preventDefault();
+  } else if (key === "0") {
+    fontDelta = 0;
+    applyFontDelta();
+    try { localStorage.setItem("review-loop:fontDelta", "0"); } catch { /* localStorage unavailable */ }
+    showToast(`Font 18px (reset)`);
+    event.preventDefault();
   }
 });
 window.setInterval(renderRecent, 10_000);

@@ -10,7 +10,7 @@ The extension has five layers:
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Entry point | [[extension]] | Registers `/diff-review` command, manages controller singleton, handles session shutdown |
+| Entry point | [[extension]] | Registers `/diffweb` command, manages controller singleton, handles session shutdown |
 | Controller | [[controller]] | Owns the Glimpse window, working-tree polling watcher, message routing, and checkpoint submission |
 | Workspace model | [[workspace]] | Maintains dual-mode (checkpoint / HEAD) file-pair state, exposes `WorkspaceState` |
 | Git layer | [[git]] | All Git subprocess calls, porcelain parsing, checkpoint creation, file content reads |
@@ -21,7 +21,7 @@ The extension has five layers:
 The sequence of messages between user, host, and window for the three main interactions.
 
 ```
-User runs /diff-review
+User runs /diffweb
   → ReviewController.openOrShow()
     → WorkspaceModel.create() + refresh() + initial workspaceSignature
     → startPolling() (2s interval, git-status based)

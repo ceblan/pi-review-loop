@@ -18,6 +18,33 @@ The host loads the bundle via `file://`, never by passing the HTML string to `op
 
 Passing the string would base64-encode it into a `data:text/html;base64` URL, and the 4.4 MB bundle (~6 MB as a data URL) is too large for Chrome to navigate to — the page never loads and the window stays blank white. Instead the controller opens an empty window and calls `window.loadFile(getReviewHtmlPath())` on `ready`, which sends the `file` message to the Glimpse backend, navigating it to `file://…/web/dist/index.html`. `file://` has no such size limit, and the bundle renders fully (verified: all sidebar/editor elements present in the DOM). The backend is the native WebKitGTK binary on Linux (see [[architecture#Architecture#Key dependencies]]); the Chromium-CDP path (`chromium-backend.mjs`) is only a zero-compile fallback used when the native binary is absent, and was the source of the EPIPE trace on close. The path is resolved from `import.meta.url` via `fileURLToPath`, so it works from the installed package too.
 
+## Keyboard shortcuts
+
+Global `keydown` listener on `window` (see `app.ts`). Modifier-key shortcuts use `Ctrl`/`Cmd`.
+
+- `j` / `k` — scroll the diff editor down / up one line (plain keys, no modifier). Disabled while focus is in a real text field (search input, draft textarea, inline-comment textarea) so the letters can be typed; the Monaco editor's own hidden input area is recognized and not blocked, so `j`/`k` scroll even when the editor is focused.
+- `Ctrl/Cmd+K` — focus and select the file search input.
+- `Ctrl/Cmd +` / `=` (and Numpad `+`) — increase all font sizes by 2 px.
+- `Ctrl/Cmd −` / `_` (and Numpad `−`) — decrease all font sizes by 2 px.
+- `Ctrl/Cmd+0` — reset font size to the baked baseline.
+
+Font zoom is implemented via the CSS `zoom` property on `<html>`, set to `(18 + fontDelta) / 18` where `18px` is the root font-size baseline. `zoom` scales the whole document uniformly — chrome fonts, the fixed-pixel glyph containers, and the Monaco editor together — so nothing clips and Monaco text scales in lockstep. The delta is clamped to `[−12, +32]` and persisted in `localStorage` (`review-loop:fontDelta`) so the chosen size survives window reloads; a `showToast` confirms the current root px on each press.
+
+`j`/`k` scroll drives `diffEditor.getModifiedEditor()`; the diff editor's built-in scroll synchronization updates the original pane to match. The step is the editor's current `lineHeight` option. Text-field detection uses `document.activeElement`: an `HTMLInputElement`/`HTMLTextAreaElement` that does not carry Monaco's `inputarea` class is treated as a real field (typing allowed); Monaco's input area carries `inputarea` and is excluded from the block, so `j`/`k` scroll even with editor focus. Inline-comment textareas live inside `.monaco-editor` but are plain `<textarea>` without the `inputarea` class, so they are correctly treated as real fields.
+
+## Typography scale
+
+All font sizes in `web/src/styles.css` are explicit pixel values on a single bumped scale for readability; the Monaco editor sets its own `fontSize`/`lineHeight` options in `app.ts`.
+
+- Root/body: `18px` (UI chrome default).
+- Monaco diff editor: `fontSize: 17`, `lineHeight: 24`.
+- Primary text (file names, tree labels, buttons, inputs, comments, toast): `16px`.
+- Secondary text (metadata, section headings, kbd, draft-actions): `13–15px`.
+- Identity/title: `17–19px`; empty-state heading `19px`.
+- Icon glyphs (icon-button `23px`, close-btn `19px`, empty-check `23px`).
+
+Fixed-pixel glyph containers were enlarged alongside their font so nothing clips: `.status` 17px box, `.tree-row .chevron` 14px, `.reviewed-check` 17px, `.comment-count` 20×20px. The two-line `.file-row` height rose to `38px` to fit the stacked `16px` name + `14px` parent; single-line `.tree-row` stays `30px`. Line-heights that were px-tied to icons (`.icon-button`) track the font bump.
+
 ## Monaco diff editor
 
 A `monaco.editor.createDiffEditor` instance with:
@@ -114,6 +141,10 @@ The sequence of UI and host actions when the user clicks the submit button.
 3. `{ type: "submit-review", comments }` sent to host.
 4. On `review-submitted` response: comments cleared, toast shown, sidebar re-rendered.
 5. A 5-second timeout re-enables the button as a safety net.
+
+## Close button
+
+A ✕ button in the top-right corner of the window sends `{ type: "close" }` to the host, which calls `window.close()`. This gives the user an explicit in-window close path instead of relying solely on the compositor's window chrome.
 
 ## Ready handshake
 

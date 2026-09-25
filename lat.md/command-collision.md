@@ -1,6 +1,8 @@
 # Command Collision
 
-Documents the `/diff-review` name clash between this extension and the visual-explainer plugin, why `/diff-review` once generated an HTML page instead of opening the review window, and how the naming is made collision-proof.
+Historical `/diff-review` name clash between this extension and the visual-explainer plugin, and how naming is made collision-proof. The command is now `/diffweb` (see [[extension#Command registration]]), so the original clash can no longer occur.
+
+`/diff-review` once generated an HTML page instead of opening the review window because the extension failed to load and the bare name fell through to visual-explainer's `diff-review` prompt template. The lazy-import pattern documented here remains a class-level defense against load-failure fallthrough to any same-named prompt template.
 
 ## Root cause
 
@@ -48,8 +50,8 @@ The primary fix is a code-level change in this repo that prevents the whole sile
 
 Run `npm install` in the extension repo (or wherever pi resolves it) so the window can actually open. This fixes the trigger; the lazy imports fix the class.
 
-### 3. Optional: collision-proof alias
+### 3. Collision-proof command name (implemented)
 
-Register a unique canonical `/review-loop` alongside `/diff-review` (same handler).
+The command is registered as `/diffweb`, a name unique to this extension (no prompt template of that name exists).
 
-`registerCommand` is a name-keyed map (`loader.ts:254`), so two names for one handler is valid. With fix #1 the alias is no longer required to avoid the fallthrough, but it gives this extension a unique name that can never clash with visual-explainer.
+This resolves the original `/diff-review` clash outright: even under a load failure, there is no `diffweb` prompt template to fall through to, so pi reports an unknown command instead of silently generating an HTML page. The previous optional `/review-loop` alias idea was superseded by simply picking an unused name. `registerCommand` is a name-keyed map (`loader.ts:254`); two names for one handler is still valid if an alias is ever wanted again.
